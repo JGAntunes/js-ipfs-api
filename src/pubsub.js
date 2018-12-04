@@ -20,6 +20,44 @@ module.exports = (arg) => {
   const subscriptions = {}
   ps.id = Math.random()
   return {
+    createTopic: (topic, handler, options, callback) => {
+      const defaultOptions = {
+        discover: false
+      }
+
+      if (typeof options === 'function') {
+        callback = options
+        options = defaultOptions
+      }
+
+      if (!options) {
+        options = defaultOptions
+      }
+
+      // Throw an error if ran in the browsers
+      if (!isNode) {
+        if (!callback) {
+          return Promise.reject(NotSupportedError())
+        }
+
+        return setImmediate(() => callback(NotSupportedError()))
+      }
+
+      // promisify doesn't work as we always pass a
+      // function as last argument (`handler`)
+      if (!callback) {
+        return new Promise((resolve, reject) => {
+          createTopic(topic, handler, options, (err) => {
+            if (err) {
+              return reject(err)
+            }
+            resolve()
+          })
+        })
+      }
+
+      createTopic(topic, handler, options, callback)
+    },
     subscribe: (topic, handler, options, callback) => {
       const defaultOptions = {
         discover: false
@@ -154,6 +192,56 @@ module.exports = (arg) => {
     setMaxListeners (n) {
       return ps.setMaxListeners(n)
     }
+  }
+
+  function createTopic (topic, handler, options, callback) {
+    ps.on(topic, handler)
+
+    if (subscriptions[topic]) {
+      // TODO: should a callback error be returned?
+      return callback()
+    }
+
+    // Request params
+    const request = {
+      path: 'pubsub/create',
+      args: [topic],
+      qs: {
+        discover: options.discover
+      }
+    }
+
+    // Start the request and transform the response
+    // stream to Pubsub messages stream
+    subscriptions[topic] = {}
+    subscriptions[topic].req = send.andTransform(request, PubsubMessageStream.from, (err, stream) => {
+      if (err) {
+        subscriptions[topic] = null
+        ps.removeListener(topic, handler)
+        return callback(err)
+      }
+
+      subscriptions[topic].res = stream
+
+      stream.on('data', (msg) => {
+        ps.emit(topic, msg)
+      })
+
+      stream.on('error', (err) => {
+        ps.emit('error', err)
+      })
+
+      eos(stream, (err) => {
+        if (err) {
+          ps.emit('error', err)
+        }
+
+        subscriptions[topic] = null
+        ps.removeListener(topic, handler)
+      })
+
+      callback()
+    })
   }
 
   function subscribe (topic, handler, options, callback) {
