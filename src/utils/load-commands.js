@@ -37,6 +37,7 @@ function requireCommands () {
     pingPullStream: require('../ping-pull-stream'),
     swarm: require('../swarm'),
     pubsub: require('../pubsub'),
+    pulsarcast: require('../pulsarcast'),
     dns: require('../dns'),
 
     // Miscellaneous
