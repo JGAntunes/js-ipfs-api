@@ -34,7 +34,10 @@ module.exports = (arg) => {
 
       const request = {
         path: 'pulsarcast/create',
-        args: [topic]
+        args: [topic],
+        qs: {
+          allAllowedToPublish: options.allAllowedToPublish
+        }
       }
 
       send(request, callback)
